@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TASKFLOW // LOGIN</title>
+  <link rel="stylesheet" href="style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<canvas id="matrixCanvas"></canvas>
+<div class="auth-wrapper">
+  <div class="auth-box">
+    <div class="auth-inner">
+      <div class="auth-logo">
+        <div class="logo-hex">
+          <svg width="64" height="64" viewBox="0 0 64 64">
+            <polygon points="32,4 58,18 58,46 32,60 6,46 6,18" fill="none" stroke="rgba(0,255,180,0.6)" stroke-width="1"/>
+            <polygon points="32,10 52,21 52,43 32,54 12,43 12,21" fill="none" stroke="rgba(0,255,180,0.3)" stroke-width="0.5"/>
+          </svg>
+          <div class="logo-inner">⬡</div>
+        </div>
+        <h1>TASKFLOW</h1>
+        <div class="tagline">SYSTEM v2.0 // INITIALIZED</div>
+      </div>
+      <h2>// AUTHENTICATE</h2>
+      <div class="error-msg" id="errorMsg">INVALID CREDENTIALS</div>
+      <form id="loginForm">
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="email" placeholder="user@domain.com" required/>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="password" placeholder="••••••••••••" required/>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <span id="btnText">ENTER SYSTEM</span>
+        </button>
+      </form>
+      <div class="auth-footer">
+        NO ACCOUNT? <a href="register.html">REGISTER HERE</a>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  // Matrix rain
+  const canvas = document.getElementById('matrixCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const chars = 'TASKFLOW01アイウエオ∆∑√∞';
+  const fontSize = 14;
+  const cols = Math.floor(canvas.width / fontSize);
+  const drops = Array(cols).fill(1);
+  function drawMatrix() {
+    ctx.fillStyle = 'rgba(2,4,8,0.05)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    drops.forEach((y,i) => {
+      ctx.fillStyle = `rgba(0,255,180,${Math.random()*0.6+0.1})`;
+      ctx.font = fontSize+'px monospace';
+      ctx.fillText(chars[Math.floor(Math.random()*chars.length)],i*fontSize,y*fontSize);
+      if(y*fontSize>canvas.height&&Math.random()>0.975) drops[i]=0;
+      drops[i]++;
+    });
+  }
+  setInterval(drawMatrix, 45);
+
+  // Supabase
+  const SUPABASE_URL = 'https://guunqxgkrfiiufmpwlis.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1dW5xeGdrcmZpaXVmbXB3bGlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5ODk4NjMsImV4cCI6MjA5NjU2NTg2M30.H-_9oWEm8aChwNnchS5fFhN8pFaX_9LAKC2nNY08-94';
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  if (localStorage.getItem('tmUser')) window.location.href = 'dashboard.html';
+
+  document.getElementById('loginForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnText');
+    btn.textContent = 'VERIFYING...';
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    const { data, error } = await sb
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .eq('password', password)
+      .single();
+
+    if (data) {
+      btn.textContent = 'ACCESS GRANTED ✓';
+      localStorage.setItem('tmUser', JSON.stringify(data));
+      setTimeout(() => window.location.href = 'dashboard.html', 600);
+    } else {
+      btn.textContent = 'ENTER SYSTEM';
+      document.getElementById('errorMsg').classList.add('show');
+      setTimeout(() => document.getElementById('errorMsg').classList.remove('show'), 3000);
+    }
+  });
+</script>
+</body>
+</html>
+    

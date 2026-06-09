@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TASKFLOW // DASHBOARD</title>
+  <link rel="stylesheet" href="style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<canvas id="matrixCanvas"></canvas>
+<div class="dashboard">
+  <nav class="navbar">
+    <div class="nav-brand">
+      <div class="nav-logo-icon">⬡</div>
+      <span>TASKFLOW</span>
+    </div>
+    <div class="nav-right">
+      <div class="nav-user">OPERATOR: <span id="navName">—</span></div>
+      <button class="btn btn-outline btn-sm" onclick="logout()">LOGOUT</button>
+    </div>
+  </nav>
+  <div class="status-bar">
+    <div class="status-item"><div class="status-dot green"></div><span>SYSTEM ONLINE</span></div>
+    <div class="status-item"><div class="status-dot orange"></div><span id="statusPending">0 PENDING</span></div>
+    <div class="status-item"><div class="status-dot blue"></div><span id="statusProgress">0 IN PROGRESS</span></div>
+    <div class="status-item"><div class="status-dot purple"></div><span id="statusDone">0 COMPLETED</span></div>
+    <div class="status-item" style="margin-left:auto"><span id="currentTime" style="color:var(--neon4)"></span></div>
+  </div>
+  <div class="main">
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-label">TOTAL TASKS</div><div class="stat-num" id="statTotal">00</div></div>
+      <div class="stat-card"><div class="stat-label">PENDING</div><div class="stat-num" id="statPending">00</div></div>
+      <div class="stat-card"><div class="stat-label">IN PROGRESS</div><div class="stat-num" id="statProgress">00</div></div>
+      <div class="stat-card"><div class="stat-label">COMPLETED</div><div class="stat-num" id="statDone">00</div></div>
+    </div>
+    <div class="content-grid">
+      <div class="form-card">
+        <div class="section-title" id="formTitle">ADD NEW TASK</div>
+        <div class="form-group"><label>Task Title</label><input type="text" id="taskTitle" placeholder="enter task name..."/></div>
+        <div class="form-group"><label>Description</label><textarea id="taskDesc" placeholder="optional details..."></textarea></div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="taskStatus">
+            <option value="pending">PENDING</option>
+            <option value="in-progress">IN PROGRESS</option>
+            <option value="completed">COMPLETED</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Due Date</label><input type="date" id="taskDate"/></div>
+        <button class="btn btn-primary" onclick="saveTask()"><span id="saveBtnText">+ ADD TASK</span></button>
+        <div id="cancelWrapper" style="display:none;margin-top:10px;">
+          <button class="btn btn-outline" style="width:100%;" onclick="cancelEdit()">✕ CANCEL EDIT</button>
+        </div>
+      </div>
+      <div class="tasks-section">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+          <div class="section-title" style="margin-bottom:0">TASK QUEUE</div>
+          <span id="taskCount" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);">0 TASKS</span>
+        </div>
+        <div class="filter-tabs">
+          <button class="filter-tab active" onclick="filterTasks('all',this)">ALL</button>
+          <button class="filter-tab" onclick="filterTasks('pending',this)">PENDING</button>
+          <button class="filter-tab" onclick="filterTasks('in-progress',this)">IN PROGRESS</button>
+          <button class="filter-tab" onclick="filterTasks('completed',this)">COMPLETED</button>
+        </div>
+        <div id="taskList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  // Matrix
+  const canvas = document.getElementById('matrixCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const chars = '01アイウエオ∆∑√∞';
+  const fontSize = 12;
+  const cols = Math.floor(canvas.width / fontSize);
+  const drops = Array(cols).fill(1);
+  function drawMatrix() {
+    ctx.fillStyle = 'rgba(2,4,8,0.06)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    drops.forEach((y,i) => {
+      ctx.fillStyle = `rgba(0,255,180,${Math.random()*0.3+0.05})`;
+      ctx.font = fontSize+'px monospace';
+      ctx.fillText(chars[Math.floor(Math.random()*chars.length)],i*fontSize,y*fontSize);
+      if(y*fontSize>canvas.height&&Math.random()>0.975) drops[i]=0;
+      drops[i]++;
+    });
+  }
+  setInterval(drawMatrix, 60);
+
+  // Supabase
+  const SUPABASE_URL = 'https://guunqxgkrfiiufmpwlis.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1dW5xeGdrcmZpaXVmbXB3bGlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5ODk4NjMsImV4cCI6MjA5NjU2NTg2M30.H-_9oWEm8aChwNnchS5fFhN8pFaX_9LAKC2nNY08-94';
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const currentUser = JSON.parse(localStorage.getItem('tmUser'));
+  if (!currentUser) window.location.href = 'login.html';
+  document.getElementById('navName').textContent = currentUser.username.toUpperCase();
+
+  // Clock
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('currentTime').textContent =
+      now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) +
+      ' // ' + now.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase();
+  }
+  setInterval(updateClock, 1000); updateClock();
+
+  let editId = null, currentFilter = 'all';
+  function pad(n) { return String(n).padStart(2,'0'); }
+
+  async function fetchTasks() {
+    const { data } = await sb
+      .from('tasks')
+      .select('*')
+      .eq('user_email', currentUser.email)
+      .order('created_at', { ascending: false });
+    return data || [];
+  }
+
+  async function render() {
+    const tasks = await fetchTasks();
+    const filtered = currentFilter === 'all' ? tasks : tasks.filter(t => t.status === currentFilter);
+    const pending  = tasks.filter(t => t.status==='pending').length;
+    const progress = tasks.filter(t => t.status==='in-progress').length;
+    const done     = tasks.filter(t => t.status==='completed').length;
+
+    document.getElementById('statTotal').textContent    = pad(tasks.length);
+    document.getElementById('statPending').textContent  = pad(pending);
+    document.getElementById('statProgress').textContent = pad(progress);
+    document.getElementById('statDone').textContent     = pad(done);
+    document.getElementById('statusPending').textContent  = pending+' PENDING';
+    document.getElementById('statusProgress').textContent = progress+' IN PROGRESS';
+    document.getElementById('statusDone').textContent     = done+' COMPLETED';
+    document.getElementById('taskCount').textContent = filtered.length+' TASK'+(filtered.length!==1?'S':'');
+
+    const list = document.getElementById('taskList');
+    if (!filtered.length) {
+      list.innerHTML = `<div class="empty-state"><div class="empty-icon">[ NO TASKS FOUND ]</div><p>// QUEUE IS EMPTY<br>// ADD A TASK TO BEGIN</p></div>`;
+      return;
+    }
+    list.innerHTML = filtered.map((task, idx) => {
+      const bc = task.status==='pending'?'badge-pending':task.status==='in-progress'?'badge-progress':'badge-completed';
+      const sl = task.status==='in-progress'?'IN PROGRESS':task.status.toUpperCase();
+      const dr = task.due_date ? `<span class="task-date">DUE: ${new Date(task.due_date).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase()}</span>` : '';
+      return `<div class="task-card ${task.status}">
+        <div class="task-id">#${String(idx+1).padStart(3,'0')} // ID:${task.id}</div>
+        <div class="task-top">
+          <div class="task-title">${task.title}</div>
+          <div class="task-actions">
+            <button class="btn btn-edit btn-sm" onclick="editTask(${task.id})">EDIT</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteTask(${task.id})">DEL</button>
+          </div>
+        </div>
+        ${task.description?`<div class="task-desc">${task.description}</div>`:''}
+        <div class="task-meta"><span class="badge ${bc}">${sl}</span>${dr}</div>
+      </div>`;
+    }).join('');
+  }
+
+  async function saveTask() {
+    const title  = document.getElementById('taskTitle').value.trim();
+    const description = document.getElementById('taskDesc').value.trim();
+    const status = document.getElementById('taskStatus').value;
+    const due_date = document.getElementById('taskDate').value;
+    if (!title) {
+      document.getElementById('taskTitle').style.borderColor='var(--danger)';
+      document.getElementById('taskTitle').focus();
+      setTimeout(()=>document.getElementById('taskTitle').style.borderColor='',1500);
+      return;
+    }
+    if (editId) {
+      await sb.from('tasks').update({ title, description, status, due_date }).eq('id', editId);
+      editId = null;
+      document.getElementById('formTitle').textContent  = 'ADD NEW TASK';
+      document.getElementById('saveBtnText').textContent = '+ ADD TASK';
+      document.getElementById('cancelWrapper').style.display = 'none';
+    } else {
+      await sb.from('tasks').insert([{ user_email: currentUser.email, title, description, status, due_date }]);
+    }
+    clearForm();
+    render();
+  }
+
+  function clearForm() {
+    document.getElementById('taskTitle').value  = '';
+    document.getElementById('taskDesc').value   = '';
+    document.getElementById('taskStatus').value = 'pending';
+    document.getElementById('taskDate').value   = '';
+  }
+
+  async function editTask(id) {
+    const tasks = await fetchTasks();
+    const task  = tasks.find(t => t.id === id);
+    if (!task) return;
+    editId = id;
+    document.getElementById('taskTitle').value  = task.title;
+    document.getElementById('taskDesc').value   = task.description || '';
+    document.getElementById('taskStatus').value = task.status;
+    document.getElementById('taskDate').value   = task.due_date || '';
+    document.getElementById('formTitle').textContent   = 'EDIT TASK';
+    document.getElementById('saveBtnText').textContent = '✓ UPDATE TASK';
+    document.getElementById('cancelWrapper').style.display = 'block';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  function cancelEdit() {
+    editId = null; clearForm();
+    document.getElementById('formTitle').textContent   = 'ADD NEW TASK';
+    document.getElementById('saveBtnText').textContent = '+ ADD TASK';
+    document.getElementById('cancelWrapper').style.display = 'none';
+  }
+
+  async function deleteTask(id) {
+    if (!confirm('DELETE THIS TASK?')) return;
+    await sb.from('tasks').delete().eq('id', id);
+    render();
+  }
+
+  function filterTasks(filter, btn) {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-tab').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    render();
+  }
+
+  function logout() {
+    localStorage.removeItem('tmUser');
+    window.location.href = 'login.html';
+  }
+
+  render();
+</script>
+</body>
+</html>
+  
